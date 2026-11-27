@@ -1,0 +1,161 @@
+{
+  "cues": [
+    {
+      "start": 0.0727,
+      "end": 4.5091,
+      "text": "孩子从 AMC 10 或 12 晋级到 AIME 了，",
+      "anchors": {},
+      "paragraph": 0,
+      "pause": "/"
+    },
+    {
+      "start": 4.7364,
+      "end": 5.7545,
+      "text": "这次去哪儿考？",
+      "anchors": {},
+      "paragraph": 0,
+      "pause": "//"
+    },
+    {
+      "start": 5.9727,
+      "end": 9.6091,
+      "text": "您先翻一下当时报名的记录，考点找原报名渠道查。",
+      "anchors": {
+        "考点找原报名渠道查": 7.7182
+      },
+      "paragraph": 0,
+      "pause": "//"
+    },
+    {
+      "start": 9.9545,
+      "end": 13.8818,
+      "text": "AMC-China 报的，预计十二月十五号能选线下考点。",
+      "anchors": {
+        "预计": 11.2636
+      },
+      "paragraph": 1,
+      "pause": "/"
+    },
+    {
+      "start": 14.1,
+      "end": 16.8636,
+      "text": "经翰林报这条渠道的，还是在翰林考。",
+      "anchors": {},
+      "paragraph": 1,
+      "pause": "/"
+    },
+    {
+      "start": 17.0091,
+      "end": 20.1364,
+      "text": "阿思丹报的，回原报名入口看考点通知。",
+      "anchors": {},
+      "paragraph": 1,
+      "pause": "//"
+    },
+    {
+      "start": 20.3364,
+      "end": 21.6455,
+      "text": "二月七号，大年初二，",
+      "anchors": {},
+      "paragraph": 2,
+      "pause": "/"
+    },
+    {
+      "start": 21.8636,
+      "end": 23.2455,
+      "text": "两边下午一点开考。",
+      "anchors": {},
+      "paragraph": 2,
+      "pause": "/"
+    },
+    {
+      "start": 23.3909,
+      "end": 26.0091,
+      "text": "接送记一下，AMC-China 四点结束，",
+      "anchors": {},
+      "paragraph": 2,
+      "pause": "/"
+    },
+    {
+      "start": 26.4182,
+      "end": 27.8,
+      "text": "阿思丹四点十分。",
+      "anchors": {},
+      "paragraph": 2,
+      "pause": "//"
+    },
+    {
+      "start": 28.0,
+      "end": 29.3818,
+      "text": "阿思丹分两段。",
+      "anchors": {},
+      "paragraph": 3,
+      "pause": "/"
+    },
+    {
+      "start": 29.5273,
+      "end": 30.8364,
+      "text": "前八题，九十分钟。",
+      "anchors": {},
+      "paragraph": 3,
+      "pause": "/"
+    },
+    {
+      "start": 31.2,
+      "end": 34.5455,
+      "text": "交卷前检查好，交了就不能再看、也不能改。",
+      "anchors": {
+        "交了就": 32.5818
+      },
+      "paragraph": 3,
+      "pause": "/"
+    },
+    {
+      "start": 34.9091,
+      "end": 37.5273,
+      "text": "歇十分钟，后七题再做九十分钟。",
+      "anchors": {
+        "后七题": 35.9273
+      },
+      "paragraph": 3,
+      "pause": "//"
+    },
+    {
+      "start": 37.8727,
+      "end": 41.7273,
+      "text": "AMC-China 的线下机考和三百五十元报名费都暂定。",
+      "anchors": {
+        "和三百五十元": 39.8364
+      },
+      "paragraph": 4,
+      "pause": "/"
+    },
+    {
+      "start": 41.8727,
+      "end": 47.4,
+      "text": "阿思丹的费用也待定，通知上写三百八十元人民币，或者四百四十九港币。",
+      "anchors": {
+        "通知上写": 43.4,
+        "或者四百四十九港币": 45.6545
+      },
+      "paragraph": 4,
+      "pause": "//"
+    },
+    {
+      "start": 47.7455,
+      "end": 49.1273,
+      "text": "要两边的对照表，",
+      "anchors": {},
+      "paragraph": 5,
+      "pause": "/"
+    },
+    {
+      "start": 49.3455,
+      "end": 51.6,
+      "text": "私信我 A-I-M-E。",
+      "anchors": {},
+      "paragraph": 5,
+      "pause": ""
+    }
+  ]
+}
