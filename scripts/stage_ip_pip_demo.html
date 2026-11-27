@@ -1,0 +1,882 @@
+<!doctype html>
+<html lang="zh-CN">
+<meta charset="utf-8">
+<style>
+  @font-face {
+    font-family: "HarmonyOS Sans SC";
+    src: local("HarmonyOS Sans SC Regular"), local("HarmonyOS Sans SC");
+    font-weight: 400;
+  }
+  @font-face {
+    font-family: "HarmonyOS Sans SC";
+    src: local("HarmonyOS Sans SC Medium"), local("HarmonyOS Sans SC");
+    font-weight: 500;
+  }
+  @font-face {
+    font-family: "HarmonyOS Sans SC";
+    src: local("HarmonyOS Sans SC Bold"), local("HarmonyOS Sans SC");
+    font-weight: 700;
+  }
+  * { margin: 0; padding: 0; }
+  body { background: #fff; overflow: hidden; }
+  canvas { display: block; width: 1080px; height: 1920px; }
+</style>
+<canvas id="stage" width="1080" height="1920"></canvas>
+<script>
+const W = 1080, H = 1920;
+const L = 124, R = 956, SAFE_W = R - L;
+const IN_L = L + 6, IN_R = R - 6, IN_W = IN_R - IN_L;
+const C = {
+  bg: "#FFFFFF",
+  blue: "#156BB1",
+  red: "#A41034",
+  sky: "#E2F3FF",
+  rose: "#FFEDF2",
+  brightBlue: "#1681D4",
+  brightRed: "#CE2755",
+  ink: "#102E4B",
+  muted: "#395872",
+  blueLine: "#BFDFF5",
+  redLine: "#F2C3D1",
+  ice: "#F4FAFF",
+};
+const SANS = '"HarmonyOS Sans SC", "Microsoft YaHei", sans-serif';
+const NUMS = '"Bahnschrift", "HarmonyOS Sans SC", sans-serif';
+
+const canvas = document.getElementById("stage");
+const g = canvas.getContext("2d", { alpha: false });
+
+let CFG = null;
+let IM = {};
+
+const clamp = (v, lo = 0, hi = 1) => Math.max(lo, Math.min(hi, v));
+const easeOut = (x) => 1 - Math.pow(1 - clamp(x), 3);
+const easeInOut = (x) => {
+  const t = clamp(x);
+  return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+};
+const anim = (t, start, dur = 0.44) => easeOut((t - start) / dur);
+function spring(t, start, dur = 0.56) {
+  const x = clamp((t - start) / dur);
+  if (x <= 0) return 0;
+  if (x >= 1) return 1;
+  return 1 - Math.exp(-7.2 * x) * Math.cos(x * Math.PI * 2.25);
+}
+
+function fillRect(x, y, w, h, color) {
+  g.fillStyle = color;
+  g.fillRect(x, y, w, h);
+}
+
+function roundBox(x, y, w, h, r, fill, stroke = null, lineWidth = 2, shadow = null) {
+  g.save();
+  if (shadow) {
+    g.shadowColor = shadow.color;
+    g.shadowBlur = shadow.blur;
+    g.shadowOffsetX = shadow.x || 0;
+    g.shadowOffsetY = shadow.y || 6;
+  }
+  g.beginPath();
+  g.roundRect(x, y, w, h, r);
+  if (fill) {
+    g.fillStyle = fill;
+    g.fill();
+  }
+  g.shadowBlur = 0;
+  g.shadowOffsetY = 0;
+  if (stroke) {
+    g.strokeStyle = stroke;
+    g.lineWidth = lineWidth;
+    g.stroke();
+  }
+  g.restore();
+}
+
+function drawLine(x1, y1, x2, y2, color, width = 3, dash = null, dashOffset = 0) {
+  g.save();
+  g.beginPath();
+  g.moveTo(x1, y1);
+  g.lineTo(x2, y2);
+  g.strokeStyle = color;
+  g.lineWidth = width;
+  g.lineCap = "round";
+  if (dash) {
+    g.setLineDash(dash);
+    g.lineDashOffset = dashOffset;
+  }
+  g.stroke();
+  g.restore();
+}
+
+function drawText(str, x, y, size, color = C.ink, weight = 700, align = "left", baseline = "top", family = SANS, maxW = null) {
+  g.save();
+  g.fillStyle = color;
+  g.textAlign = align;
+  g.textBaseline = baseline;
+  let px = size;
+  g.font = `${weight} ${px}px ${family}`;
+  if (maxW) {
+    const measured = g.measureText(str).width;
+    if (measured > maxW && measured > 0) {
+      px = Math.max(14, Math.floor(size * (maxW / measured)));
+      g.font = `${weight} ${px}px ${family}`;
+    }
+  }
+  g.fillText(str, x, y);
+  g.restore();
+}
+
+function drawPill(label, x, y, h, bg, fg, size = 23, weight = 700, border = null, padX = 20) {
+  g.save();
+  g.font = `${weight} ${size}px ${SANS}`;
+  const w = Math.ceil(g.measureText(label).width) + padX * 2;
+  roundBox(x, y, w, h, h / 2, bg, border, 2);
+  drawText(label, x + w / 2, y + h / 2 + 1, size, fg, weight, "center", "middle");
+  g.restore();
+  return w;
+}
+
+function drawPulse(x, y, localT, color, maxR = 32) {
+  const phase = (Math.max(0, localT) % 1.45) / 1.45;
+  g.save();
+  g.globalAlpha = (1 - phase) * 0.45;
+  g.strokeStyle = color;
+  g.lineWidth = 3;
+  g.beginPath();
+  g.arc(x, y, 10 + phase * maxR, 0, Math.PI * 2);
+  g.stroke();
+  g.restore();
+}
+
+function drawCheck(cx, cy, r, progress, bg, stroke) {
+  if (progress <= 0) return;
+  g.save();
+  g.fillStyle = bg;
+  g.beginPath();
+  g.arc(cx, cy, r * Math.min(1, progress * 1.4), 0, Math.PI * 2);
+  g.fill();
+  if (progress > 0.22) {
+    const p = clamp((progress - 0.22) / 0.78);
+    const pts = [
+      [cx - r * 0.42, cy + r * 0.02],
+      [cx - r * 0.10, cy + r * 0.34],
+      [cx + r * 0.44, cy - r * 0.30],
+    ];
+    g.strokeStyle = stroke;
+    g.lineWidth = 4.2;
+    g.lineCap = "round";
+    g.lineJoin = "round";
+    g.beginPath();
+    g.moveTo(...pts[0]);
+    if (p < 0.45) {
+      const k = p / 0.45;
+      g.lineTo(pts[0][0] + (pts[1][0] - pts[0][0]) * k, pts[0][1] + (pts[1][1] - pts[0][1]) * k);
+    } else {
+      g.lineTo(...pts[1]);
+      const k = (p - 0.45) / 0.55;
+      g.lineTo(pts[1][0] + (pts[2][0] - pts[1][0]) * k, pts[1][1] + (pts[2][1] - pts[1][1]) * k);
+    }
+    g.stroke();
+  }
+  g.restore();
+}
+
+function drawCross(cx, cy, r, progress, bg, stroke) {
+  if (progress <= 0) return;
+  g.save();
+  g.fillStyle = bg;
+  g.beginPath();
+  g.arc(cx, cy, r * Math.min(1, progress * 1.35), 0, Math.PI * 2);
+  g.fill();
+  if (progress > 0.2) {
+    const p = clamp((progress - 0.2) / 0.8);
+    const d = r * 0.38;
+    g.strokeStyle = stroke;
+    g.lineWidth = 4.2;
+    g.lineCap = "round";
+    const p1 = clamp(p * 2);
+    g.beginPath();
+    g.moveTo(cx - d, cy - d);
+    g.lineTo(cx - d + 2 * d * p1, cy - d + 2 * d * p1);
+    g.stroke();
+    if (p > 0.5) {
+      const p2 = clamp((p - 0.5) * 2);
+      g.beginPath();
+      g.moveTo(cx + d, cy - d);
+      g.lineTo(cx + d - 2 * d * p2, cy - d + 2 * d * p2);
+      g.stroke();
+    }
+  }
+  g.restore();
+}
+
+function drawShimmer(x, y, w, h, r, localT, cycle = 2.8) {
+  const phase = (localT % cycle) / cycle;
+  if (phase > 0.65) return;
+  const u = phase / 0.65;
+  const sx = x - 140 + (w + 280) * u;
+  g.save();
+  g.beginPath();
+  g.roundRect(x, y, w, h, r);
+  g.clip();
+  const grad = g.createLinearGradient(sx - 60, y, sx + 60, y + h);
+  grad.addColorStop(0, "rgba(255,255,255,0)");
+  grad.addColorStop(0.5, "rgba(255,255,255,0.22)");
+  grad.addColorStop(1, "rgba(255,255,255,0)");
+  g.fillStyle = grad;
+  g.fillRect(sx - 90, y, 180, h);
+  g.restore();
+}
+
+function drawFlowConnector(x1, y1, x2, y2, progress, localT, color, glowColor) {
+  const p = clamp(progress);
+  if (p <= 0) return;
+  const cx = x1 + (x2 - x1) * p;
+  const cy = y1 + (y2 - y1) * p;
+  drawLine(x1, y1, cx, cy, color, 4);
+  if (p > 0.92) {
+    const u = (localT * 1.15) % 1;
+    const px = x1 + (x2 - x1) * u;
+    const py = y1 + (y2 - y1) * u;
+    g.save();
+    g.fillStyle = glowColor;
+    g.shadowColor = glowColor;
+    g.shadowBlur = 10;
+    g.beginPath();
+    g.arc(px, py, 6, 0, Math.PI * 2);
+    g.fill();
+    g.restore();
+  }
+}
+
+function drawCoverFrame(alpha = 1) {
+  if (!IM.cover || alpha <= 0) return;
+  const covW = IN_W;
+  const covH = Math.round(covW * 4 / 3);
+  const cx = IN_L;
+  const cy = 316;
+  g.save();
+  g.globalAlpha = alpha;
+  roundBox(cx + 6, cy + 8, covW, covH, 26, "#D9EDFC", null, 0);
+  roundBox(cx, cy, covW, covH, 26, "#FFFFFF", C.blueLine, 2);
+  g.beginPath();
+  g.roundRect(cx, cy, covW, covH, 26);
+  g.clip();
+  g.drawImage(IM.cover, cx, cy, covW, covH);
+  g.restore();
+}
+
+function drawBackground(sec, sIdx) {
+  const isWarn = sIdx === 1;
+  const glowColor = isWarn ? "rgba(206, 39, 85, 0.065)" : "rgba(22, 129, 212, 0.075)";
+  const gx = L + SAFE_W * (0.5 + 0.14 * Math.sin(sec * 0.42));
+  const gy = 480 + 80 * Math.cos(sec * 0.34);
+  const grad = g.createRadialGradient(gx, gy, 30, gx, gy, 460);
+  grad.addColorStop(0, glowColor);
+  grad.addColorStop(1, "rgba(255,255,255,0)");
+  fillRect(L, 0, SAFE_W, 1452, grad);
+
+  g.save();
+  const pulse = 0.06 + 0.025 * Math.sin(sec * 1.4);
+  g.fillStyle = `rgba(21, 107, 177, ${pulse})`;
+  for (let x = L + 26; x <= R - 22; x += 38) {
+    for (let y = 180; y <= 1250; y += 38) {
+      g.beginPath();
+      g.arc(x, y, 1.5, 0, Math.PI * 2);
+      g.fill();
+    }
+  }
+  g.restore();
+}
+
+function drawHeader() {
+  if (IM.logo) {
+    const h = 42;
+    const w = Math.round(IM.logo.width * (h / IM.logo.height));
+    g.drawImage(IM.logo, IN_L + 4, 84, w, h);
+  }
+  const badge = (CFG && CFG.headerBadge) || "名师 · 直播实录";
+  g.save();
+  g.font = `700 21px ${SANS}`;
+  const bw = Math.ceil(g.measureText(badge).width) + 40;
+  g.restore();
+  drawPill(badge, IN_R - bw, 83, 44, C.sky, C.blue, 21, 700, C.blueLine, 20);
+  drawLine(IN_L, 152, IN_R, 152, C.blueLine, 2);
+}
+
+// Reserves shadow + nameplate beneath the real-person circle overlay
+function drawPipSlotBase(cx, cy, label, sec, accent = C.blue) {
+  const enter = clamp((sec - CFG.cover) / 0.25);
+  if (enter <= 0) return;
+  g.save();
+  g.globalAlpha *= enter;
+  g.save();
+  g.shadowColor = "rgba(16, 46, 75, 0.16)";
+  g.shadowBlur = 22;
+  g.shadowOffsetY = 8;
+  g.fillStyle = "#FFFFFF";
+  g.beginPath();
+  g.arc(cx, cy, 113, 0, Math.PI * 2);
+  g.fill();
+  g.restore();
+  g.font = `700 20px ${SANS}`;
+  const tw = Math.ceil(g.measureText(label).width) + 34;
+  roundBox(cx - tw / 2, cy + 122, tw, 36, 18, "#FFFFFF", accent === C.red ? C.redLine : C.blueLine, 2);
+  drawText(label, cx, cy + 141, 20, accent, 700, "center", "middle");
+  g.restore();
+}
+
+function slotCenter(sIdx, defX, defY) {
+  if (CFG && Array.isArray(CFG.centers) && CFG.centers[sIdx]) {
+    return CFG.centers[sIdx];
+  }
+  return [defX, defY];
+}
+
+function slotLabel(sIdx, fallback) {
+  if (CFG && Array.isArray(CFG.slotLabels) && CFG.slotLabels[sIdx]) {
+    return CFG.slotLabels[sIdx];
+  }
+  return fallback;
+}
+
+function cueRel(idx) {
+  return CFG.starts[idx];
+}
+
+// ============================================================
+// ACT 1: Cues 0, 1, 2 | PiP slot top-right (828, 304)
+// Left title x=140..692, lower visual canvas y=486..1218
+// ============================================================
+function sceneHook(t, cueIndex, sceneStart) {
+  const lt = t - sceneStart;
+  const [px, py] = slotCenter(0, 828, 304);
+  drawPipSlotBase(px, py, slotLabel(0, "主讲老师"), t, C.blue);
+
+  const kt = anim(lt, 0, 0.42);
+  g.save();
+  g.globalAlpha *= kt;
+  g.translate(0, (1 - kt) * 14);
+  drawPill("AMC 后续怎么规划", IN_L + 4, 196, 44, C.rose, C.red, 22, 700, C.redLine, 20);
+  drawText("AMC 拿奖后", IN_L + 4, 260, 56, C.ink, 700, "left", "top", SANS, 540);
+  drawText("下一步怎么办？", IN_L + 4, 334, 58, C.blue, 700, "left", "top", SANS, 540);
+  const ul = anim(lt, 0.14, 0.42);
+  drawLine(IN_L + 6, 412, IN_L + 6 + 340 * ul, 412, C.brightBlue, 5);
+  g.restore();
+
+  const kCard = spring(lt, 0.10, 0.56);
+  const cy = 492 + (1 - kCard) * 24;
+  g.save();
+  g.globalAlpha *= clamp(kCard);
+  roundBox(IN_L, cy, IN_W, 308, 28, "#FFFFFF", C.blueLine, 2.5, { color: "rgba(21,107,177,0.12)", blur: 18, y: 8 });
+  roundBox(IN_L, cy, IN_W, 12, 6, C.blue);
+  roundBox(IN_L + 36, cy + 44, 168, 122, 20, C.sky, C.blueLine, 2);
+  drawText("AMC", IN_L + 120, cy + 88, 44, C.blue, 700, "center", "middle", NUMS);
+  drawText("竞赛表现", IN_L + 120, cy + 134, 21, C.muted, 700, "center", "middle");
+  drawText("已经比完 AMC", IN_L + 234, cy + 52, 42, C.ink, 700, "left", "top", SANS, 460);
+  drawText("取得了不错成绩与奖项", IN_L + 234, cy + 112, 30, C.muted, 600, "left", "top", SANS, 460);
+
+  const c1 = cueIndex >= 1 ? anim(t, cueRel(1), 0.40) : 0;
+  if (c1 > 0) {
+    drawCheck(IN_R - 64, cy + 92, 26, c1, C.blue, "#FFFFFF");
+    drawPulse(IN_R - 64, cy + 92, Math.max(0, t - cueRel(1)), C.brightBlue, 28);
+  }
+  const tagP = anim(lt, 0.35, 0.40);
+  g.save();
+  g.globalAlpha *= tagP;
+  drawPill("数学学术起点 ✓", IN_L + 36, cy + 216, 48, C.sky, C.blue, 24, 700, C.blueLine, 24);
+  drawPill("很多家庭都在这里卡住", IN_L + 288, cy + 216, 48, C.ice, C.muted, 24, 600, C.blueLine, 24);
+  g.restore();
+  g.restore();
+
+  const c2 = cueIndex >= 2 ? t - cueRel(2) : 0;
+  const connP = cueIndex >= 2 ? anim(c2, 0, 0.34) : anim(lt, 0.55, 0.45) * 0.45;
+  drawFlowConnector(540, cy + 308, 540, cy + 382, connP, Math.max(0, c2), C.brightBlue, C.brightBlue);
+
+  const kQ = cueIndex >= 2 ? spring(c2, 0.05, 0.54) : 0.32;
+  const qy = 876 + (cueIndex >= 2 ? (1 - kQ) * 26 : 18);
+  g.save();
+  g.globalAlpha *= cueIndex >= 2 ? clamp(kQ) : 0.45;
+  roundBox(IN_L, qy, IN_W, 314, 28, C.sky, C.brightBlue, 2.5, { color: "rgba(21,107,177,0.14)", blur: 18, y: 8 });
+  const qBadgeX = IN_L + 74, qBadgeY = qy + 92;
+  g.fillStyle = C.red;
+  g.beginPath();
+  g.arc(qBadgeX, qBadgeY, 34, 0, Math.PI * 2);
+  g.fill();
+  drawText("?", qBadgeX, qBadgeY + 2, 42, "#FFFFFF", 700, "center", "middle", NUMS);
+  if (cueIndex >= 2) drawPulse(qBadgeX, qBadgeY, c2, C.brightRed, 32);
+
+  drawText("拿到 AMC 之后怎么办？", IN_L + 132, qy + 64, 44, C.ink, 700, "left", "top", SANS, IN_W - 170);
+  drawLine(IN_L + 40, qy + 150, IN_R - 40, qy + 150, C.blueLine, 2);
+  drawText("很多 10–11 年级高分同学", IN_L + 44, qy + 184, 30, C.muted, 600);
+  drawText("荣誉不能放着吃灰，下一步该怎么衔接？", IN_L + 44, qy + 236, 33, C.blue, 700, "left", "top", SANS, IN_W - 88);
+  g.restore();
+}
+
+// ============================================================
+// ACT 2: Cues 3, 4, 5, 6 | PiP slot top-left (252, 304)
+// Right title x=392..944, visual cards y=486..1218
+// ============================================================
+function sceneBottleneck(t, cueIndex, sceneStart) {
+  const lt = t - sceneStart;
+  const [px, py] = slotCenter(1, 252, 304);
+  drawPipSlotBase(px, py, slotLabel(1, "痛点拆解"), t, C.red);
+
+  const kt = anim(lt, 0, 0.42);
+  g.save();
+  g.globalAlpha *= kt;
+  g.translate(0, (1 - kt) * 14);
+  drawPill("家长常见卡点", 392, 196, 44, C.rose, C.red, 22, 700, C.redLine, 20);
+  drawText("10–11年级拿奖后", 392, 260, 50, C.ink, 700, "left", "top", SANS, 550);
+  drawText("遇上身份限制？", 392, 330, 52, C.red, 700, "left", "top", SANS, 550);
+  const ul = anim(lt, 0.14, 0.42);
+  drawLine(394, 408, 394 + 340 * ul, 408, C.brightRed, 5);
+  g.restore();
+
+  const kTop = spring(lt, 0.06, 0.54);
+  const ty = 492 + (1 - kTop) * 22;
+  g.save();
+  g.globalAlpha *= clamp(kTop);
+  roundBox(IN_L, ty, IN_W, 294, 28, C.ice, C.blueLine, 2.5, { color: "rgba(21,107,177,0.10)", blur: 16, y: 6 });
+  drawPill("现状", IN_L + 36, ty + 32, 42, C.blue, "#FFFFFF", 22, 700, null, 22);
+  drawText("G10 / G11 已拿下不错 AMC 荣誉", IN_L + 150, ty + 36, 36, C.ink, 700, "left", "top", SANS, IN_W - 190);
+
+  const c4 = cueIndex >= 4 ? t - cueRel(4) : 0;
+  const kLock = cueIndex >= 4 ? spring(c4, 0, 0.48) : 0.28;
+  g.save();
+  g.globalAlpha *= cueIndex >= 4 ? clamp(kLock) : 0.35;
+  roundBox(IN_L + 36, ty + 110, IN_W - 72, 146, 20, C.rose, C.redLine, 2);
+  roundBox(IN_L + 60, ty + 140, 128, 84, 14, C.red);
+  drawText("受限", IN_L + 124, ty + 183, 30, "#FFFFFF", 700, "center", "middle");
+  drawText("身份限制，不能再往下比", IN_L + 214, ty + 140, 35, C.red, 700, "left", "top", SANS, IN_W - 310);
+  drawText("进阶通道受阻，竞赛成绩停在半路", IN_L + 214, ty + 194, 26, C.muted, 600, "left", "top", SANS, IN_W - 310);
+  g.restore();
+  g.restore();
+
+  const c5 = cueIndex >= 5 ? t - cueRel(5) : 0;
+  const kMyth = cueIndex >= 5 ? spring(c5, 0, 0.54) : 0.25;
+  const my = 834 + (cueIndex >= 5 ? (1 - kMyth) * 24 : 20);
+  const c6 = cueIndex >= 6 ? t - cueRel(6) : 0;
+  const isRejected = cueIndex >= 6;
+
+  g.save();
+  g.globalAlpha *= cueIndex >= 5 ? clamp(kMyth) : 0.38;
+  roundBox(IN_L, my, IN_W, 376, 28, "#FFFFFF", isRejected ? C.brightRed : C.redLine, isRejected ? 3 : 2, { color: "rgba(164,16,52,0.12)", blur: 18, y: 8 });
+  drawPill("常见误区", IN_L + 36, my + 34, 44, C.rose, C.red, 23, 700, C.redLine, 22);
+  drawText("难道等 12 年级申请再用？", IN_L + 206, my + 39, 36, C.ink, 700, "left", "top", SANS, IN_W - 246);
+
+  const nodes = [
+    { x: IN_L + 126, label: "G10/11", sub: "已拿荣誉", col: C.blue },
+    { x: 540, label: "干等 1–2 年", sub: "假期空置", col: C.red },
+    { x: IN_R - 126, label: "G12", sub: "申请季提交", col: C.muted },
+  ];
+  const lineY = my + 162;
+  const dashOff = cueIndex >= 5 ? -(c5 * 44) % 24 : 0;
+  drawLine(nodes[0].x, lineY, nodes[2].x, lineY, C.redLine, 4, [10, 10], dashOff);
+  nodes.forEach((n) => {
+    g.fillStyle = "#FFFFFF";
+    g.beginPath();
+    g.arc(n.x, lineY, 16, 0, Math.PI * 2);
+    g.fill();
+    g.strokeStyle = n.col;
+    g.lineWidth = 4;
+    g.stroke();
+    drawText(n.label, n.x, lineY + 30, 26, n.col, 700, "center", "top");
+    drawText(n.sub, n.x, lineY + 66, 21, C.muted, 500, "center", "top");
+  });
+
+  if (isRejected) {
+    const ks = spring(c6, 0, 0.42);
+    const bannerY = my + 278;
+    g.save();
+    g.globalAlpha = clamp(ks);
+    const sc = 1 + (1 - clamp(ks)) * 0.14;
+    g.translate(540, bannerY + 34);
+    g.scale(sc, sc);
+    g.translate(-540, -(bannerY + 34));
+    roundBox(IN_L + 36, bannerY, IN_W - 72, 68, 18, C.red, null, 0, { color: "rgba(164,16,52,0.22)", blur: 12, y: 4 });
+    drawCross(IN_L + 84, bannerY + 34, 21, easeOut(c6 / 0.30), "#FFFFFF", C.red);
+    drawText("不是啊！黄金假期千万别白白空等", IN_L + 126, bannerY + 35, 31, "#FFFFFF", 700, "left", "middle", SANS, IN_W - 184);
+    g.restore();
+  } else {
+    roundBox(IN_L + 36, my + 278, IN_W - 72, 68, 18, C.rose, C.redLine, 2);
+    drawText("把既有荣誉直接搁置一两年……", 540, my + 313, 28, C.red, 600, "center", "middle");
+  }
+  g.restore();
+}
+
+// ============================================================
+// ACT 3: Cues 7, 8, 9 | PiP slot top-right (828, 304)
+// Left title x=140..692, 3-step pipeline + dynamic holiday calendar y=486..1218
+// ============================================================
+function sceneSummerSchool(t, cueIndex, sceneStart) {
+  const lt = t - sceneStart;
+  const [px, py] = slotCenter(2, 828, 304);
+  drawPipSlotBase(px, py, slotLabel(2, "正确接力方案"), t, C.blue);
+
+  const kt = anim(lt, 0, 0.42);
+  g.save();
+  g.globalAlpha *= kt;
+  g.translate(0, (1 - kt) * 14);
+  drawPill("正确接力路线", IN_L + 4, 196, 44, C.sky, C.blue, 22, 700, C.blueLine, 20);
+  drawText("假期立刻用起来", IN_L + 4, 260, 54, C.ink, 700, "left", "top", SANS, 540);
+  drawText("申请顶尖数学夏校", IN_L + 4, 334, 52, C.blue, 700, "left", "top", SANS, 540);
+  const ul = anim(lt, 0.14, 0.42);
+  drawLine(IN_L + 6, 412, IN_L + 6 + 340 * ul, 412, C.brightBlue, 5);
+  g.restore();
+
+  const s1Y = 486;
+  const k1 = spring(lt, 0.04, 0.52);
+  g.save();
+  g.globalAlpha *= clamp(k1);
+  roundBox(IN_L, s1Y + (1 - k1) * 16, IN_W, 152, 24, C.sky, C.brightBlue, 2.5);
+  roundBox(IN_L + 30, s1Y + 34 + (1 - k1) * 16, 86, 86, 18, C.blue);
+  drawText("01", IN_L + 73, s1Y + 79 + (1 - k1) * 16, 36, "#FFFFFF", 700, "center", "middle", NUMS);
+  drawText("课外数学竞赛荣誉", IN_L + 140, s1Y + 38 + (1 - k1) * 16, 38, C.ink, 700, "left", "top", SANS, IN_W - 220);
+  drawText("现有 AMC 成绩与奖项立刻作为有效背书", IN_L + 140, s1Y + 94 + (1 - k1) * 16, 25, C.muted, 600, "left", "top", SANS, IN_W - 220);
+  drawCheck(IN_R - 52, s1Y + 76 + (1 - k1) * 16, 20, easeOut(lt / 0.40), C.blue, "#FFFFFF");
+  g.restore();
+
+  const c8 = cueIndex >= 8 ? t - cueRel(8) : 0;
+  drawFlowConnector(540, s1Y + 152, 540, s1Y + 206, anim(lt, 0.25, 0.35), lt, C.brightBlue, C.brightBlue);
+
+  const s2Y = 692;
+  const k2 = cueIndex >= 8 ? spring(c8, 0, 0.54) : anim(lt, 0.2, 0.4) * 0.45;
+  g.save();
+  g.globalAlpha *= cueIndex >= 8 ? clamp(k2) : 0.45;
+  roundBox(IN_L, s2Y, IN_W, 258, 24, "#FFFFFF", cueIndex >= 8 ? C.brightBlue : C.blueLine, 2.5, { color: "rgba(21,107,177,0.12)", blur: 16, y: 6 });
+  roundBox(IN_L + 30, s2Y + 30, 86, 86, 18, C.brightBlue);
+  drawText("02", IN_L + 73, s2Y + 75, 36, "#FFFFFF", 700, "center", "middle", NUMS);
+  drawText("等到假期就行动", IN_L + 140, s2Y + 34, 38, C.ink, 700);
+  drawText("不用干等 12 年级 · 把握眼下假期窗口", IN_L + 140, s2Y + 86, 25, C.muted, 600);
+
+  const calX = IN_L + 36, calY = s2Y + 140, calW = IN_W - 72;
+  roundBox(calX, calY, calW, 92, 16, C.ice, C.blueLine, 1.5);
+  const months = ["10-12月", "寒假窗口", "1-3月递交", "暑期夏校", "高一/二衔接", "能力延续"];
+  const boxW = (calW - 44 - 5 * 10) / 6;
+  months.forEach((m, i) => {
+    const bx = calX + 22 + i * (boxW + 10);
+    const by = calY + 18;
+    const isHot = i === 1 || i === 2 || i === 3;
+    const litDelay = i * 0.09;
+    const pLit = cueIndex >= 8 ? anim(c8, litDelay, 0.30) : 0;
+    const bgCol = isHot && pLit > 0.25 ? (i === 3 ? C.blue : C.brightBlue) : "#FFFFFF";
+    const fgCol = isHot && pLit > 0.25 ? "#FFFFFF" : C.muted;
+    roundBox(bx, by, boxW, 56, 10, bgCol, isHot ? C.brightBlue : C.blueLine, 1.5);
+    drawText(m, bx + boxW / 2, by + 29, 18, fgCol, 700, "center", "middle", SANS, boxW - 8);
+  });
+  g.restore();
+
+  const c9 = cueIndex >= 9 ? t - cueRel(9) : 0;
+  drawFlowConnector(540, s2Y + 258, 540, s2Y + 312, cueIndex >= 9 ? anim(c9, 0, 0.30) : 0.35, Math.max(0, c9), C.brightBlue, C.brightBlue);
+
+  const s3Y = 1004;
+  const k3 = cueIndex >= 9 ? spring(c9, 0.04, 0.54) : 0.35;
+  g.save();
+  g.globalAlpha *= cueIndex >= 9 ? clamp(k3) : 0.42;
+  const grad = g.createLinearGradient(IN_L, s3Y, IN_R, s3Y + 206);
+  grad.addColorStop(0, C.blue);
+  grad.addColorStop(1, C.brightBlue);
+  roundBox(IN_L, s3Y, IN_W, 206, 26, grad, null, 0, { color: "rgba(21,107,177,0.24)", blur: 20, y: 8 });
+  if (cueIndex >= 9) drawShimmer(IN_L, s3Y, IN_W, 206, 26, c9, 2.4);
+  roundBox(IN_L + 30, s3Y + 56, 86, 86, 18, "rgba(255,255,255,0.18)", "rgba(255,255,255,0.45)", 2);
+  drawText("03", IN_L + 73, s3Y + 101, 36, "#FFFFFF", 700, "center", "middle", NUMS);
+  drawText("用来申请数学夏校", IN_L + 140, s3Y + 46, 46, "#FFFFFF", 700, "left", "top", SANS, IN_W - 230);
+  drawText("把竞赛荣誉直接转化为夏校竞争力", IN_L + 140, s3Y + 114, 27, C.sky, 600, "left", "top", SANS, IN_W - 230);
+  if (cueIndex >= 9) {
+    drawCheck(IN_R - 58, s3Y + 103, 24, easeOut(c9 / 0.36), "#FFFFFF", C.blue);
+    drawPulse(IN_R - 58, s3Y + 103, c9, "#FFFFFF", 30);
+  }
+  g.restore();
+}
+
+// ============================================================
+// ACT 4: Cues 10, 11, 12 | PiP slot bottom-left (252, 1086)
+// Top header full-width y=182..324, middle ladder y=342..938,
+// bottom-right closing card x=394..946, y=970..1234
+// ============================================================
+function sceneExtension(t, cueIndex, sceneStart) {
+  const lt = t - sceneStart;
+  const [px, py] = slotCenter(3, 252, 1086);
+  drawPipSlotBase(px, py, slotLabel(3, "规划总结"), t, C.blue);
+
+  const kt = anim(lt, 0, 0.42);
+  g.save();
+  g.globalAlpha *= kt;
+  g.translate(0, (1 - kt) * 14);
+  drawPill("核心规划逻辑", IN_L + 4, 184, 42, C.sky, C.blue, 21, 700, C.blueLine, 20);
+  drawText("把数学学术能力延伸开来", IN_L + 4, 244, 54, C.ink, 700, "left", "top", SANS, IN_W - 12);
+  const ul = anim(lt, 0.14, 0.42);
+  drawLine(IN_L + 4, 316, IN_L + 4 + 480 * ul, 316, C.brightBlue, 5);
+  g.restore();
+
+  const kComp = spring(lt, 0.05, 0.52);
+  const stripY = 344 + (1 - kComp) * 16;
+  const colW = (IN_W - 20) / 2;
+  g.save();
+  g.globalAlpha *= clamp(kComp);
+  roundBox(IN_L, stripY, colW, 134, 22, C.rose, C.redLine, 2);
+  drawCross(IN_L + 46, stripY + 46, 18, easeOut(lt / 0.35), C.red, "#FFFFFF");
+  drawText("低效做法", IN_L + 78, stripY + 30, 26, C.red, 700);
+  drawText("只攒荣誉干等到 12 年级", IN_L + 28, stripY + 82, 24, C.muted, 600, "left", "top", SANS, colW - 50);
+
+  const rx = IN_L + colW + 20;
+  roundBox(rx, stripY, colW, 134, 22, C.sky, C.brightBlue, 2.5);
+  drawCheck(rx + 46, stripY + 46, 18, easeOut(lt / 0.35), C.blue, "#FFFFFF");
+  drawText("正确延伸", rx + 78, stripY + 30, 26, C.blue, 700);
+  drawText("假期接力申数学夏校", rx + 28, stripY + 82, 24, C.ink, 700, "left", "top", SANS, colW - 50);
+  g.restore();
+
+  const c11 = cueIndex >= 11 ? t - cueRel(11) : 0;
+  const ladY = 508;
+  const steps = [
+    { num: "STEP 1", title: "AMC 证明学术底色", desc: "已经通过竞赛展示不错的数学学术能力", activeAt: 0 },
+    { num: "STEP 2", title: "延伸到数学夏校申请", desc: "让既有竞赛荣誉在更早假期里立刻发挥作用", activeAt: 0.25 },
+    { num: "STEP 3", title: "学术履历滚雪球放大", desc: "竞赛 + 夏校叠加，大学申请更有说服力", activeAt: 0.55 },
+  ];
+  steps.forEach((st, idx) => {
+    const sy = ladY + idx * 144;
+    const isOn = idx === 0 ? lt > 0.15 : (cueIndex >= 11 && c11 >= st.activeAt);
+    const localT = idx === 0 ? lt : Math.max(0, c11 - st.activeAt);
+    const k = isOn ? spring(localT, 0, 0.48) : 0.42;
+    g.save();
+    g.globalAlpha *= isOn ? clamp(k) : 0.45;
+    const bg = isOn && idx === 2 ? C.sky : "#FFFFFF";
+    const border = isOn ? C.brightBlue : C.blueLine;
+    roundBox(IN_L, sy, IN_W, 126, 22, bg, border, isOn ? 2.5 : 1.5);
+    roundBox(IN_L + 24, sy + 28, 118, 70, 14, isOn ? C.blue : C.sky);
+    drawText(st.num, IN_L + 83, sy + 64, 23, isOn ? "#FFFFFF" : C.blue, 700, "center", "middle", NUMS);
+    drawText(st.title, IN_L + 166, sy + 26, 33, C.ink, 700, "left", "top", SANS, IN_W - 240);
+    drawText(st.desc, IN_L + 166, sy + 72, 23, C.muted, 600, "left", "top", SANS, IN_W - 240);
+    if (isOn) drawCheck(IN_R - 46, sy + 63, 18, easeOut(localT / 0.35), C.brightBlue, "#FFFFFF");
+    g.restore();
+  });
+
+  const c12 = cueIndex >= 12 ? t - cueRel(12) : 0;
+  const k12 = cueIndex >= 12 ? spring(c12, 0, 0.52) : 0.40;
+  const bx = 394, bw = IN_R - bx, by = 972, bh = 262;
+  g.save();
+  g.globalAlpha *= cueIndex >= 12 ? clamp(k12) : 0.45;
+  const grad = g.createLinearGradient(bx, by, bx + bw, by + bh);
+  grad.addColorStop(0, C.blue);
+  grad.addColorStop(1, C.brightBlue);
+  roundBox(bx, by, bw, bh, 26, grad, null, 0, { color: "rgba(21,107,177,0.22)", blur: 18, y: 8 });
+  if (cueIndex >= 12) {
+    drawShimmer(bx, by, bw, bh, 26, c12, 2.3);
+    drawPulse(bx + bw - 54, by + 56, c12, "#FFFFFF", 24);
+  }
+  drawPill("规划收口", bx + 28, by + 26, 38, "rgba(255,255,255,0.20)", "#FFFFFF", 19, 700, "rgba(255,255,255,0.4)", 18);
+  drawText("竞赛荣誉不是终点", bx + 28, by + 84, 38, "#FFFFFF", 700, "left", "top", SANS, bw - 56);
+  drawText("把它延伸开来", bx + 28, by + 138, 34, C.sky, 700, "left", "top", SANS, bw - 56);
+  drawText("假期用好数学夏校，持续放大优势", bx + 28, by + 194, 24, "#FFFFFF", 600, "left", "top", SANS, bw - 56);
+  g.restore();
+}
+
+function drawProgressNav(sec, sIdx) {
+  const names = (CFG && CFG.progressNames) || ["AMC拿奖", "身份卡点", "假期申夏校", "能力延伸"];
+  const barY = 1276, barL = IN_L + 10, barR = IN_R - 10, barW = barR - barL;
+  const frac = clamp((sec - CFG.cover) / Math.max(0.1, CFG.duration - CFG.cover));
+
+  roundBox(barL, barY, barW, 8, 4, C.sky);
+  if (frac > 0) {
+    const grad = g.createLinearGradient(barL, barY, barR, barY);
+    grad.addColorStop(0, C.blue);
+    grad.addColorStop(1, sIdx === 1 ? C.brightRed : C.brightBlue);
+    roundBox(barL, barY, Math.max(12, barW * frac), 8, 4, grad);
+    const hx = clamp(barL + barW * frac, barL + 4, barR - 4);
+    g.save();
+    g.fillStyle = "#FFFFFF";
+    g.strokeStyle = sIdx === 1 ? C.red : C.blue;
+    g.lineWidth = 3.5;
+    g.beginPath();
+    g.arc(hx, barY + 4, 8, 0, Math.PI * 2);
+    g.fill();
+    g.stroke();
+    g.restore();
+  }
+
+  const slotW = barW / names.length;
+  names.forEach((nm, i) => {
+    const on = i === sIdx;
+    const cx = barL + slotW * (i + 0.5);
+    g.save();
+    g.fillStyle = on ? (i === 1 ? C.red : C.blue) : "#B4D6EE";
+    g.beginPath();
+    g.arc(cx - 56, barY + 28, 4, 0, Math.PI * 2);
+    g.fill();
+    drawText(nm, cx - 44, barY + 28, 22, on ? C.ink : C.muted, on ? 700 : 500, "left", "middle");
+    g.restore();
+  });
+}
+
+function drawCaption(text, progress, sec) {
+  if (!text) return;
+  const openFade = clamp((sec - CFG.cover) / 0.14);
+  const txtFade = clamp(0.45 + progress / 0.10);
+  const y = 1344;
+  g.save();
+  g.globalAlpha *= openFade;
+  roundBox(IN_L, y, IN_W, 92, 24, C.ink, null, 0, { color: "rgba(16,46,75,0.18)", blur: 16, y: 6 });
+  g.globalAlpha *= txtFade;
+
+  const blueKws = (CFG && CFG.blueKeywords) || ["AMC", "数学夏校", "学术能力", "延伸开来", "数学竞赛荣誉", "假期"];
+  const redKws = (CFG && CFG.redKeywords) || ["身份限制", "12年级", "不是啊", "没法比了"];
+  let tokens = [{ txt: text, col: "#FFFFFF" }];
+  const splitBy = (arr, kws, col) => {
+    let out = [];
+    for (const seg of arr) {
+      if (seg.col !== "#FFFFFF") { out.push(seg); continue; }
+      let s = seg.txt;
+      while (s.length) {
+        let bestIdx = -1, bestKw = "";
+        for (const kw of kws) {
+          const i = s.indexOf(kw);
+          if (i >= 0 && (bestIdx < 0 || i < bestIdx)) { bestIdx = i; bestKw = kw; }
+        }
+        if (bestIdx < 0) { out.push({ txt: s, col: "#FFFFFF" }); break; }
+        if (bestIdx > 0) out.push({ txt: s.slice(0, bestIdx), col: "#FFFFFF" });
+        out.push({ txt: bestKw, col });
+        s = s.slice(bestIdx + bestKw.length);
+      }
+    }
+    return out;
+  };
+  tokens = splitBy(tokens, blueKws, "#7FD1FF");
+  tokens = splitBy(tokens, redKws, "#FF8BA7");
+
+  let px = 42;
+  g.font = `700 ${px}px ${SANS}`;
+  let totalW = tokens.reduce((a, t) => a + g.measureText(t.txt).width, 0);
+  const maxW = IN_W - 44;
+  if (totalW > maxW) {
+    px = Math.max(24, Math.floor(px * (maxW / totalW)));
+    g.font = `700 ${px}px ${SANS}`;
+    totalW = tokens.reduce((a, t) => a + g.measureText(t.txt).width, 0);
+  }
+  let curX = 540 - totalW / 2;
+  g.textAlign = "left";
+  g.textBaseline = "middle";
+  for (const seg of tokens) {
+    g.fillStyle = seg.col;
+    g.fillText(seg.txt, curX, y + 47);
+    curX += g.measureText(seg.txt).width;
+  }
+  g.restore();
+}
+
+const SCENES = [
+  { maxCue: 2, fn: sceneHook },
+  { maxCue: 6, fn: sceneBottleneck },
+  { maxCue: 9, fn: sceneSummerSchool },
+  { maxCue: 12, fn: sceneExtension },
+];
+
+function sceneIndexForCue(cueIndex) {
+  return SCENES.findIndex((s) => cueIndex <= s.maxCue);
+}
+
+function sceneStartForIndex(sIdx) {
+  if (sIdx === 0) return CFG.cover;
+  const prevMax = SCENES[sIdx - 1].maxCue;
+  return CFG.starts[prevMax + 1];
+}
+
+function activeCueAt(sec) {
+  let idx = 0;
+  for (let i = 0; i < CFG.starts.length; i++) {
+    if (sec >= CFG.starts[i]) idx = i;
+    else break;
+  }
+  return idx;
+}
+
+function activeCaptionAt(sec) {
+  for (let i = CFG.captions.length - 1; i >= 0; i--) {
+    const [a, b, txt] = CFG.captions[i];
+    if (sec >= a && sec < b + 0.035) {
+      return { text: txt, progress: sec - a };
+    }
+  }
+  return { text: "", progress: 0 };
+}
+
+window.setupStage = async function(cfg) {
+  CFG = cfg;
+  const entries = [
+    ["logo", cfg.logoUri],
+    ["cover", cfg.coverUri],
+  ];
+  await Promise.all(entries.map(async ([k, uri]) => {
+    const im = new Image();
+    im.src = uri;
+    await im.decode();
+    IM[k] = im;
+  }));
+  await Promise.all([
+    document.fonts.load(`400 32px ${SANS}`),
+    document.fonts.load(`700 58px ${SANS}`),
+    document.fonts.load(`700 56px ${NUMS}`),
+  ]);
+  await document.fonts.ready;
+};
+
+window.renderFrame = function(sec) {
+  fillRect(0, 0, W, H, C.bg);
+
+  g.save();
+  g.beginPath();
+  g.rect(L, 0, SAFE_W, 1452);
+  g.clip();
+
+  // Strictly static cover for frames 0..20 (sec < 0.70)
+  if (sec < CFG.cover) {
+    drawCoverFrame(1);
+    g.restore();
+    return true;
+  }
+
+  const cueIdx = activeCueAt(sec);
+  const sIdx = sceneIndexForCue(cueIdx);
+  const sceneStart = sceneStartForIndex(sIdx);
+  const elapsedInScene = sec - sceneStart;
+
+  drawBackground(sec, sIdx);
+  drawHeader();
+
+  const transDur = 0.26;
+  if (sIdx === 0 && elapsedInScene < 0.24) {
+    const p = easeOut(elapsedInScene / 0.24);
+    g.save();
+    g.globalAlpha = p;
+    g.translate(0, (1 - p) * 14);
+    SCENES[0].fn(sec, cueIdx, sceneStart);
+    g.restore();
+  } else if (sIdx > 0 && elapsedInScene < transDur) {
+    const p = easeInOut(elapsedInScene / transDur);
+    const prevIdx = sIdx - 1;
+    const prevStart = sceneStartForIndex(prevIdx);
+    const prevMaxCue = SCENES[prevIdx].maxCue;
+    g.save();
+    g.globalAlpha = 1 - p;
+    g.translate(0, -14 * p);
+    SCENES[prevIdx].fn(sec, prevMaxCue, prevStart);
+    g.restore();
+
+    g.save();
+    g.globalAlpha = p;
+    g.translate(0, 14 * (1 - p));
+    SCENES[sIdx].fn(sec, cueIdx, sceneStart);
+    g.restore();
+  } else {
+    SCENES[sIdx].fn(sec, cueIdx, sceneStart);
+  }
+
+  drawProgressNav(sec, sIdx);
+  const cap = activeCaptionAt(sec);
+  drawCaption(cap.text, cap.progress, sec);
+
+  g.restore();
+  return true;
+};
+</script>
+</html>

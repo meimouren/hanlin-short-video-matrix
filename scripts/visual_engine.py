@@ -272,7 +272,7 @@ def composite_dynamic_circle_pip(
 
         chain = (
             f"[0:v]settb=1/{fps},setpts=N[page];"
-            f"[1:v]settb=1/{fps},setpts=N,crop={cw}:{ch}:{cx_crop}:{cy_crop},"
+            f"[1:v]fps={fps},settb=1/{fps},setpts=N,crop={cw}:{ch}:{cx_crop}:{cy_crop},"
             f"scale={inner_size}:{inner_size}:flags=lanczos,setsar=1,format=yuva420p,"
             f"tpad=start={cover_frames}:start_mode=clone:stop=40:stop_mode=clone,settb=1/{fps},setpts=N[raw];"
             "[2:v]format=gray[inner];[raw][inner]alphamerge[cutout];"
