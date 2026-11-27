@@ -4,15 +4,15 @@
 
 ## 先跑一条样片
 
-在仓库根目录运行。Windows 已用 Python 3.10 验证。首次安装依赖需要网络，生成时使用仓库内的 AIME 独立封面、百炼 `qwen-audio-3.0-tts-plus` 系统男声龙安鲁风的 1.1 倍干声、对齐表和授权标识。
+在仓库根目录运行。Windows 已用 Python 3.10 与 Chrome 验证。升级版入口通过 [visual_engine.py](scripts/visual_engine.py) 驱动 Chromium Canvas 2D 白/翰林蓝/战绩红动效、外框连通透明 Logo、108 BPM 轻快拨弦与微音效，并自动生成 `966px / 864px` 手机裁切与 12 帧实帧总览：
 
 ```powershell
 python -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -r scripts/requirements.txt
-.\.venv\Scripts\python.exe -X utf8 scripts/render_aime.py --output preview-aime
+.\.venv\Scripts\python.exe -B -X utf8 scripts/render_aime_canvas.py --output preview-aime
 ```
 
-输出目录必须是新目录。完成后打开 `AIME-纯动画样片.mp4`，查看 `独立封面.png`、`视频首帧.jpg`、`字幕.srt`、`声画时间.json` 和混音记录。预期是 1080×1920、30 fps、约 54 秒，18 个口播锚点、25 行字幕，首 21 帧为封面。可加 `--music plucked` 另外试听轻快拨弦。渲染器以本机中文字体绘制，缺字体时见下方接手手册。
+输出目录必须是新目录。完成后打开 `AIME-视觉升级样片.mp4`，查看 `独立封面.png`、`视频首帧.jpg`、`字幕.srt`、`关键帧总览.jpg`、`手机裁切核对.jpg` 和混音记录。若仅做轻量离线校验（无 Chrome 时），也可运行传统 Pillow 入口 `scripts/render_aime.py --output preview-aime-basic`。渲染器以本机中文字体绘制，缺字体时见下方接手手册。
 
 ## 接一条新视频
 
