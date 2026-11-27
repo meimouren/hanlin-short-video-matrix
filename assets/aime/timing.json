@@ -157,5 +157,9 @@
       "paragraph": 5,
       "pause": ""
     }
-  ]
+  ],
+  "provider": "阿里云百炼",
+  "model": "qwen-audio-3.0-tts-plus",
+  "voice": "longanlufeng",
+  "tempo": 1.1
 }
